@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "title": "1948 Korean Election (RP) — Direct Vote",
+    "tallies": "popular_vote"
+  },
+  "parties": {
+    "National Association": { "color": "#1271B5" },
+    "Korean Independence Party": { "color": "#008000" },
+    "Korean Social Democratic Party": { "color": "#FAAFBE" },
+    "Korean People's Party": { "color": "#0087BD" },
+    "Korean Worker's Party": { "color": "#CE1126" }
+  },
+  "provinces": {
+    "Seoul": {
+      "winner": "National Association",
+      "votes": {
+        "National Association": 210000,
+        "Korean Independence Party": 180000,
+        "Korean Social Democratic Party": 90000,
+        "Korean People's Party": 40000,
+        "Korean Worker's Party": 25000
+      }
+    },
+    "Gyeonggi": {
+      "winner": "Korean Independence Party",
+      "votes": {
+        "National Association": 300000,
+        "Korean Independence Party": 330000,
+        "Korean Social Democratic Party": 120000,
+        "Korean People's Party": 50000,
+        "Korean Worker's Party": 42000 // Add more provinces here — keys must match the GeoJSON's province name field
+      }
+    }
+    
+  },
+  "mapping": {
+    "province_name_property": "name",  
+    "geojson_file": "Korea1948.geojson"
+  }
+}
