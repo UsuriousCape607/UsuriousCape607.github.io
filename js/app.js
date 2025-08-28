@@ -103,9 +103,10 @@ function displayPartyName(name) {
   // Map known party codes to friendly display names.  These keys
   // reflect the column names in the CSV (without the `_votes` suffix).
   const customNames = {
-    KimGu: 'Kim Ku',        // prefer "Kim Ku" spelling
-    Cho: 'Cho Man‑sik',     // full name of Cho Man‑sik
-    WPK: 'WPK'             // leave acronyms as‑is
+    KimGu: 'Kim Ku (Korea Independence Party)',        // prefer "Kim Ku" spelling
+    Cho: 'Cho Man‑sik (Korean Social Democratic Party)',     // full name of Cho Man‑sik
+    WPK: 'Park Heonyeong (Workers Party of Korea)',             // leave acronyms as‑is
+    Rhee: 'Rhee Syngman (National Alliance for the Rapid Realization of Korean Independence)' // full name of Rhee Syngman
   };
   if (customNames[name]) {
     return customNames[name];
@@ -332,6 +333,7 @@ async function init() {
   injectPartyOptions(parties);
   // Draw initial progress bar and styling
   updateProgressUI(progress);
+  renderDesk(progress, rowsLive, STATE.parties);
   updateMapStyling(modeSelect.value);
   // Periodically update progress and repaint.  The interval
   // automatically stops once the count is complete.
@@ -339,6 +341,7 @@ async function init() {
   const timer = setInterval(() => {
     progress = computeProgress(STATE.startMs, STATE.endMs);
     updateProgressUI(progress);
+  renderDesk(progress, rowsLive, STATE.parties);
     // Recompute live rows
     rowsLive = scaleRowsByProgress(STATE.rowsFinal, STATE.parties, progress);
     const byId2 = new Map(rowsLive.map(r => [String(r.district_id), r]));
@@ -352,3 +355,91 @@ async function init() {
 
 // Kick off the app when the script is loaded
 init();
+
+
+function fmtPct(x){ return Number.isFinite(x) ? x.toFixed(1) + '%' : '—'; }
+function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtCountdown(ms){
+  if (!Number.isFinite(ms) || ms <= 0) return '00:00';
+  const s = Math.floor(ms/1000);
+  const m = Math.floor(s/60);
+  const r = s % 60;
+  return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+}
+function computeNational(rows, parties){
+  const totals = Object.fromEntries(parties.map(p => [p, 0]));
+  let ballots = 0, eligible = 0, turnoutWeighted = 0;
+  for (const r of rows){
+    const rowTot = parties.reduce((s,p)=> s + (r[`${p}_votes_live`] || 0), 0);
+    ballots += rowTot;
+    eligible += Number(r.eligible_voters_est) || 0;
+    const to = Number(r.turnout_est ?? r.turnout) || 0;
+    const el = Number(r.eligible_voters_est) || 0;
+    turnoutWeighted += to * el;
+    for (const p of parties){ totals[p] += r[`${p}_votes_live`] || 0; }
+  }
+  const natPct = Object.fromEntries(parties.map(p => [p, ballots ? (totals[p]/ballots*100) : 0]));
+  const natTurnout = eligible ? (turnoutWeighted / eligible) : 0;
+  const ordered = [...parties].sort((a,b)=> totals[b]-totals[a]);
+  return { totals, natPct, ballots, eligible, natTurnout, ordered };
+}
+function renderDesk(progress, rowsLive, parties){
+  const pEl = document.getElementById('deskProgress');
+  const pTx = document.getElementById('deskProgressText');
+  if (pEl) pEl.value = progress;
+  if (pTx) pTx.textContent = fmtPct(progress);
+
+  if (window.STATE?.startMs && window.STATE?.endMs){
+    const sEl = document.getElementById('deskStart');
+    const eEl = document.getElementById('deskETA');
+    if (sEl) sEl.textContent = fmtTime(window.STATE.startMs);
+    if (eEl) {
+      const left = Math.max(0, window.STATE.endMs - Date.now());
+      eEl.textContent = fmtCountdown(left);
+    }
+  }
+
+  const agg = computeNational(rowsLive, parties);
+  const list = document.getElementById('raceList');
+  const totLine = document.getElementById('raceTotals');
+  const turnEl = document.getElementById('turnoutNational');
+  if (list){
+    list.innerHTML='';
+    for (const p of agg.ordered){
+      const pct = agg.natPct[p] || 0;
+      const votes = agg.totals[p] || 0;
+      const row = document.createElement('div');
+      row.className = 'race-row';
+      const name = document.createElement('div');
+      name.className = 'race-name';
+      name.innerHTML = `<span class="swatch" style="background:${partyColor(p)}"></span>${displayPartyName(p)}`;
+      const pctEl = document.createElement('div');
+      pctEl.className = 'race-pct';
+      pctEl.textContent = fmtPct(pct);
+      const bar = document.createElement('div');
+      bar.className = 'race-bar';
+      const fill = document.createElement('div');
+      fill.className = 'race-fill';
+      fill.style.background = partyColor(p);
+      fill.style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%';
+      bar.appendChild(fill);
+      row.appendChild(name);
+      row.appendChild(pctEl);
+      row.appendChild(bar);
+      list.appendChild(row);
+    }
+  }
+  if (totLine){ totLine.textContent = `Total votes: ${agg.ballots.toLocaleString()}`; }
+  if (turnEl){ turnEl.textContent = fmtPct(agg.natTurnout); }
+
+  const repEl = document.getElementById('provincesReporting');
+  if (repEl && window.STATE?.gj){
+    const totalProv = window.STATE.gj.features.length;
+    let reporting = 0;
+    for (const r of rowsLive){
+      const sum = parties.reduce((s,p)=> s + (r[`${p}_votes_live`]||0), 0);
+      if (sum > 0) reporting++;
+    }
+    repEl.textContent = `${reporting} / ${totalProv}`;
+  }
+}

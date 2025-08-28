@@ -6,6 +6,20 @@
 <link rel="stylesheet" href="https://unpkg.com/xp.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>#map{height:calc(100vh - 90px)}.controls{display:flex;gap:12px;align-items:center;padding:8px 12px;border-bottom:1px solid #eee;background:#fff}</style>
+
+<style>
+  #wrap { display:flex; gap:8px; }
+  #map { flex: 1 1 auto; min-height: 80vh; }
+  #desk { width: 360px; flex: 0 0 360px; }
+  .race-row { display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .race-name { width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .race-pct  { width:48px; text-align:right; }
+  .race-bar  { position:relative; height:16px; flex:1; background:#eee; border:1px solid #aaa; }
+  .race-fill { position:absolute; top:0; left:0; height:100%; width:0%; transition:width .6s ease; }
+  .swatch { display:inline-block; width:10px; height:10px; margin-right:6px; vertical-align:middle; border:1px solid #333; }
+  .muted { color:#555; font-size:12px; }
+</style>
+
 </head>
 <body>
 <header class="bar"><h1>Yimana RP Elections</h1></header>
@@ -18,7 +32,8 @@
     </select>
   </label>
 </div>
-<div id="map"></div>
+<div id="wrap">
+  <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="js/map_core.js"></script>
 <script src="js/app.js"></script>
