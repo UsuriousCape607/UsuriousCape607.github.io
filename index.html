@@ -1,99 +1,26 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>1948 Korean Election — RP Map</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<style>
-  body{margin:0;font-family:sans-serif}
-  .topbar{display:flex;align-items:center;gap:.75rem;padding:10px 14px;border-bottom:1px solid #ccc;background:#fff}
-  .title{font-weight:700}
-  .totals{margin-left:auto;display:flex;gap:.5rem;flex-wrap:wrap}
-  .pill{padding:4px 10px;border-radius:999px;font-weight:700;color:#fff}
-  #map{height:calc(100vh - 56px)}
-  .legend{position:absolute;bottom:14px;left:14px;background:#fff;padding:8px 10px;border:1px solid #ccc;border-radius:6px}
-  .legend div{display:flex;align-items:center;gap:.5rem}
-  .swatch{width:14px;height:14px;border-radius:3px;border:1px solid #999}
-</style>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Yimana RP Elections</title>
+<link rel="stylesheet" href="https://unpkg.com/xp.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>#map{height:calc(100vh - 90px)}.controls{display:flex;gap:12px;align-items:center;padding:8px 12px;border-bottom:1px solid #eee;background:#fff}</style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="title" id="title">Election</div>
-    <div class="totals" id="totals"></div>
-  </div>
-  <div id="map"></div>
+<header class="bar"><h1>Yimana RP Elections</h1></header>
+<div class="controls">
+  <label>Mode:
+    <select id="mode">
+      <option value="winner">Winner (by share)</option>
+      <option value="turnout">Turnout (%)</option>
+      <!-- Party shares injected by app.js -->
+    </select>
+  </label>
+</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/map_core.js"></script>
+<script src="js/app.js"></script>
+</body></html>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-  const DATA_URL = 'data/results.json';
-
-  function computePopularVote(provinceResults) {
-    const totals = {};
-    for (const rec of Object.values(provinceResults)) {
-      for (const [party, votes] of Object.entries(rec.votes || {})) {
-        totals[party] = (totals[party] || 0) + votes;
-      }
-    }
-    return totals;
-  }
-
-  function makeTotalsBar(parties, provinceResults) {
-    const div = document.getElementById('totals');
-    div.innerHTML = '';
-    const totals = computePopularVote(provinceResults);
-    const grand = Object.values(totals).reduce((a,b)=>a+b,0) || 1;
-    const ordered = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
-    for (const [p, v] of ordered) {
-      const pill = document.createElement('span');
-      pill.className = 'pill';
-      pill.style.background = parties[p]?.color || '#666';
-      pill.textContent = `${p}: ${v.toLocaleString()} (${(v/grand*100).toFixed(1)}%)`;
-      div.appendChild(pill);
-    }
-  }
-
-  function popupHTML(name, rec, parties) {
-    const votes = rec.votes || {};
-    const sum = Object.values(votes).reduce((a,b)=>a+b,0) || 1;
-    return `<b>${name}</b><br>Winner: <b style="color:${parties[rec.winner]?.color||'#000'}">${rec.winner}</b><br><br>` +
-      Object.entries(votes)
-        .sort((a,b)=>b[1]-a[1])
-        .map(([p,v]) => `${p}: ${v.toLocaleString()} (${(v/sum*100).toFixed(1)}%)`)
-        .join('<br>');
-  }
-
-  fetch(DATA_URL).then(r=>r.json()).then(data=>{
-    const parties = data.parties;
-    const provinceResults = data.provinces;
-    const nameProp = data.mapping.province_name_property;
-    const geoFile = data.mapping.geojson_file;
-    document.getElementById('title').textContent = data.meta.title;
-
-    fetch('data/' + geoFile).then(r=>r.json()).then(geo=>{
-      const map = L.map('map');
-      const layer = L.geoJSON(geo, {
-        style: f => {
-          const rec = provinceResults[f.properties[nameProp]];
-          return { color:'#333', weight:1, fillColor: rec ? parties[rec.winner].color : '#ccc', fillOpacity:0.85 };
-        },
-        onEachFeature: (f, layer) => {
-          const rec = provinceResults[f.properties[nameProp]];
-          layer.bindPopup(rec ? popupHTML(f.properties[nameProp], rec, parties) : 'No data');
-        }
-      }).addTo(map);
-      map.fitBounds(layer.getBounds());
-      makeTotalsBar(parties, provinceResults);
-
-      const legend = L.control({position:'bottomleft'});
-      legend.onAdd = () => {
-        const div = L.DomUtil.create('div','legend');
-        div.innerHTML = Object.entries(parties).map(([p,v])=>`<div><span class="swatch" style="background:${v.color}"></span>${p}</div>`).join('');
-        return div;
-      };
-      legend.addTo(map);
-    });
-  });
-  </script>
-</body>
-</html>
