@@ -13,6 +13,77 @@
 // These globals hold the Leaflet map and layer as well as some state
 // about the loaded election.  They are intentionally kept simple
 // rather than attaching everything to the window object.
+
+// ===== Helpers: formatting & timing =====
+function fmtPct(x){ return Number.isFinite(x) ? x.toFixed(1) + '%' : '—'; }
+function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtCountdown(ms){
+  if (!Number.isFinite(ms) || ms <= 0) return '00:00';
+  const s = Math.floor(ms/1000), m = Math.floor(s/60), r = s % 60;
+  return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+}
+function computeProgress(startMs, endMs) {
+  const now = Date.now();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 100;
+  if (now <= startMs) return 0;
+  if (now >= endMs) return 100;
+  return ((now - startMs) / (endMs - startMs)) * 100;
+}
+function ensureCountWindow(E) {
+  const s = Date.parse(E?.count_start);
+  const e = Date.parse(E?.count_end);
+  if (Number.isFinite(s) && Number.isFinite(e) && e > s) return { startMs: s, endMs: e, source: 'manifest' };
+  try {
+    const saved = JSON.parse(localStorage.getItem('countWindow') || 'null');
+    if (saved && Number.isFinite(saved.startMs) && Number.isFinite(saved.endMs) && saved.endMs > Date.now()) {
+      return { startMs: saved.startMs, endMs: saved.endMs, source: 'saved' };
+    }
+  } catch (_) {}
+  const now = Date.now();
+  const fresh = { startMs: now, endMs: now + 5*60*1000 };
+  try { localStorage.setItem('countWindow', JSON.stringify(fresh)); } catch(_){}
+  return { ...fresh, source: 'fresh' };
+}
+// ===== District reporting schedule =====
+function assignReportingSchedule(rows, startMs, endMs) {
+  const span = Math.max(1, endMs - startMs);
+  return rows.map(r => {
+    let bias = 0.5;
+    const did = String(r.district_id || '');
+    if (did.match(/Seoul/i)) bias = 0.25;
+    else if (did.match(/Jeon|Jeolla/i)) bias = 0.35;
+    else if (did.match(/Hamgyeong/i)) bias = 0.65;
+    else if (did.match(/Pyeong/i)) bias = 0.55;
+    const startFrac = Math.min(0.9, Math.max(0.05, bias + (Math.random()-0.5)*0.3));
+    const endFrac   = Math.min(1.0, Math.max(startFrac + 0.05, startFrac + 0.25 + Math.random()*0.25));
+    const rs = Math.round(startMs + startFrac*span);
+    const re = Math.round(startMs + endFrac*span);
+    return { ...r, report_start: rs, report_end: re };
+  });
+}
+function scaleRowsBySchedule(rowsWithSched, parties, now = Date.now()) {
+  return rowsWithSched.map(row => {
+    const rs = row.report_start, re = row.report_end;
+    let phase = 0;
+    if (now >= re) phase = 1;
+    else if (now > rs) phase = (now - rs) / Math.max(1, re - rs);
+    const out = { ...row, _party: {} };
+    let total = 0;
+    for (const p of parties) {
+      const v = Number(row[`${p}_votes`]) || 0;
+      const live = Math.round(v * phase);
+      out[`${p}_votes_live`] = live;
+      total += live;
+    }
+    for (const p of parties) {
+      const vLive = out[`${p}_votes_live`];
+      out._party[p] = { votes: vLive, share: total ? (vLive/total*100) : null };
+    }
+    out._totalVotes = total;
+    return out;
+  });
+}
+
 let MAP, LAYER, LEGEND, STATE;
 
 /**
@@ -42,17 +113,6 @@ function computeProgress(startMs, endMs) {
  * @param {object} election - an election entry from the manifest
  * @returns {{startMs: number, endMs: number}} start and end times
  */
-function getCountWindow(election) {
-  const FIVE_MIN = 5 * 60 * 1000;
-  let startMs = Number.isFinite(Date.parse(election.count_start)) ? Date.parse(election.count_start) : NaN;
-  let endMs = Number.isFinite(Date.parse(election.count_end))   ? Date.parse(election.count_end)   : NaN;
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
-    const now = Date.now();
-    startMs = now;
-    endMs   = now + FIVE_MIN;
-  }
-  return { startMs, endMs };
-}
 
 /**
  * Scale vote totals for each row according to the current progress.
@@ -348,188 +408,59 @@ function injectPartyOptions(parties) {
  * Main entry point.  Fetches manifest, data files and boots the map.
  */
 async function init() {
-  // Load the manifest.  We assume there is at least one universe
-  // and at least one election.  If the manifest structure changes,
-  // adjust this logic accordingly.
   const manifest = await j('manifest.json');
   const universe  = manifest.universes[0];
   const election  = universe.elections[0];
-  // Fetch the geoJSON and CSV in parallel
   const [gj, csvText] = await Promise.all([j(universe.geojson), t(election.csv)]);
   const rowsFinal = parseCSV(csvText);
-  // Detect parties from the header of the CSV (looking for *_votes or *_share)
   const parties = rowsFinal.length ? detectParties(rowsFinal[0]) : [];
-  // Determine count window and initial progress
-  const { startMs, endMs } = getCountWindow(election);
-  let progress = computeProgress(startMs, endMs);
-  // Prepare initial scaled rows
-  let rowsLive = scaleRowsByProgress(rowsFinal, parties, progress);
-  // Attach the current rows to each feature by district_id
-  const byId = new Map(rowsLive.map(r => [String(r.district_id), r]));
-  gj.features.forEach(f => {
-    f.properties._row = byId.get(String(f.properties.district_id)) || null;
-  });
-  // Persist state for use in other functions
-  STATE = { parties, rowsFinal, gj, election, startMs, endMs };
-  // Compute bounds for the features.  We do this before creating
-  // the map so we can pass maxBounds when constructing it.  The
-  // geoJSON layer created here is temporary; it is not added to
-  // the map.
+
+  const win = ensureCountWindow(election);
+  STATE = { parties, rowsFinal, gj, election, startMs: win.startMs, endMs: win.endMs };
+  STATE.scheduleRows = assignReportingSchedule(rowsFinal, STATE.startMs, STATE.endMs);
+
   const featureLayer = L.geoJSON(gj);
   const featureBounds = featureLayer.getBounds();
-  // Create the map with a maximum bounding box and viscosity so
-  // panning outside the peninsula is resisted.  We'll set the
-  // minimum zoom after fitting the bounds.
-  MAP = L.map('map', {
-    preferCanvas: true,
-    maxBounds: featureBounds.pad(0.1),
-    maxBoundsViscosity: 1.0
-  });
-  // Create and add a legend control
+  MAP = L.map('map', { preferCanvas: true, maxBounds: featureBounds.pad(0.1), maxBoundsViscosity: 1.0 });
   LEGEND = L.control({ position: 'bottomleft' });
-  LEGEND.onAdd = function () {
-    this._div = L.DomUtil.create('div', 'legend');
-    return this._div;
-  };
+  LEGEND.onAdd = function () { this._div = L.DomUtil.create('div', 'legend'); return this._div; };
   LEGEND.addTo(MAP);
-  // Create the GeoJSON layer with basic styling and tooltips
   LAYER = L.geoJSON(gj, {
-    style: () => ({
-      color: '#666',
-      weight: 0.6,
-      fillColor: '#eee',
-      fillOpacity: 0.9
-    }),
+    style: () => ({ color:'#666', weight:0.6, fillColor:'#eee', fillOpacity:0.9 }),
     onEachFeature: (feature, layer) => {
-      layer.on('mousemove', e => {
-        layer.bindTooltip(makeTip(feature), { sticky: true }).openTooltip(e.latlng);
-      });
-      layer.on('mouseout', () => {
-        layer.closeTooltip();
-      });
+      layer.on('mousemove', e => { layer.bindTooltip(makeTip(feature), { sticky:true }).openTooltip(e.latlng); });
+      layer.on('mouseout', () => { layer.closeTooltip(); });
     }
   }).addTo(MAP);
-  // Fit the map to the feature bounds and then lock the minimum zoom
   MAP.fitBounds(featureBounds, { padding: [10, 10] });
   MAP.setMinZoom(MAP.getZoom());
-  // Wire up the mode selector and inject party share options
   const modeSelect = document.getElementById('mode');
   modeSelect.addEventListener('change', () => updateMapStyling(modeSelect.value));
   injectPartyOptions(parties);
-  // Draw initial progress bar and styling
+
+  // First paint
+  let progress = computeProgress(STATE.startMs, STATE.endMs);
+  let rowsLive = scaleRowsBySchedule(STATE.scheduleRows, STATE.parties, Date.now());
+  const byId = new Map(rowsLive.map(r => [String(r.district_id), r]));
+  gj.features.forEach(f => { f.properties._row = byId.get(String(f.properties.district_id)) || null; });
+
   updateProgressUI(progress);
   renderDesk(progress, rowsLive, STATE.parties);
   updateMapStyling(modeSelect.value);
-  // Periodically update progress and repaint.  The interval
-  // automatically stops once the count is complete.
-  const TICK_MS = 2000;
-  const { start, end } = getCountWindow(election);   // your fallback now→now+5m
-  STATE.startMs = start;
-  STATE.endMs   = end;
 
-  // Set up periodic update using setInterval
+  const TICK_MS = 2000;
   const timer = setInterval(() => {
+    const now = Date.now();
     progress = computeProgress(STATE.startMs, STATE.endMs);
-    rowsLive = scaleRowsByProgress(STATE.rowsFinal, STATE.parties, progress);
+    rowsLive = scaleRowsBySchedule(STATE.scheduleRows, STATE.parties, now);
     const byId2 = new Map(rowsLive.map(r => [String(r.district_id), r]));
-    STATE.gj.features.forEach(f => {
-      f.properties._row = byId2.get(String(f.properties.district_id)) || null;
-    });
+    STATE.gj.features.forEach(f => { f.properties._row = byId2.get(String(f.properties.district_id)) || null; });
     updateProgressUI(progress);
     renderDesk(progress, rowsLive, STATE.parties);
     updateMapStyling(modeSelect.value);
-    if (progress >= 100) clearInterval(timer);
+    const allDone = rowsLive.every(r => now >= r.report_end);
+    if (progress >= 100 && allDone) clearInterval(timer);
   }, TICK_MS);
 }
-
 // Kick off the app when the script is loaded
 init();
-
-
-function fmtPct(x){ return Number.isFinite(x) ? x.toFixed(1) + '%' : '—'; }
-function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
-function fmtCountdown(ms){
-  if (!Number.isFinite(ms) || ms <= 0) return '00:00';
-  const s = Math.floor(ms/1000);
-  const m = Math.floor(s/60);
-  const r = s % 60;
-  return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
-}
-function computeNational(rows, parties){
-  const totals = Object.fromEntries(parties.map(p => [p, 0]));
-  let ballots = 0, eligible = 0, turnoutWeighted = 0;
-  for (const r of rows){
-    const rowTot = parties.reduce((s,p)=> s + (r[`${p}_votes_live`] || 0), 0);
-    ballots += rowTot;
-    eligible += Number(r.eligible_voters_est) || 0;
-    const to = Number(r.turnout_est ?? r.turnout) || 0;
-    const el = Number(r.eligible_voters_est) || 0;
-    turnoutWeighted += to * el;
-    for (const p of parties){ totals[p] += r[`${p}_votes_live`] || 0; }
-  }
-  const natPct = Object.fromEntries(parties.map(p => [p, ballots ? (totals[p]/ballots*100) : 0]));
-  const natTurnout = eligible ? (turnoutWeighted / eligible) : 0;
-  const ordered = [...parties].sort((a,b)=> totals[b]-totals[a]);
-  return { totals, natPct, ballots, eligible, natTurnout, ordered };
-}
-function renderDesk(progress, rowsLive, parties){
-  const pEl = document.getElementById('deskProgress');
-  const pTx = document.getElementById('deskProgressText');
-  if (pEl) pEl.value = progress;
-  if (pTx) pTx.textContent = fmtPct(progress);
-
-  if (window.STATE?.startMs && window.STATE?.endMs){
-    const sEl = document.getElementById('deskStart');
-    const eEl = document.getElementById('deskETA');
-    if (sEl) sEl.textContent = fmtTime(window.STATE.startMs);
-    if (eEl) {
-      const left = Math.max(0, window.STATE.endMs - Date.now());
-      eEl.textContent = fmtCountdown(left);
-    }
-  }
-
-  const agg = computeNational(rowsLive, parties);
-  const list = document.getElementById('raceList');
-  const totLine = document.getElementById('raceTotals');
-  const turnEl = document.getElementById('turnoutNational');
-  if (list){
-    list.innerHTML='';
-    for (const p of agg.ordered){
-      const pct = agg.natPct[p] || 0;
-      const votes = agg.totals[p] || 0;
-      const row = document.createElement('div');
-      row.className = 'race-row';
-      const name = document.createElement('div');
-      name.className = 'race-name';
-      name.innerHTML = `<span class="swatch" style="background:${partyColor(p)}"></span>${displayPartyName(p)}`;
-      const pctEl = document.createElement('div');
-      pctEl.className = 'race-pct';
-      pctEl.textContent = fmtPct(pct);
-      const bar = document.createElement('div');
-      bar.className = 'race-bar';
-      const fill = document.createElement('div');
-      fill.className = 'race-fill';
-      fill.style.background = partyColor(p);
-      fill.style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%';
-      bar.appendChild(fill);
-      row.appendChild(name);
-      row.appendChild(pctEl);
-      row.appendChild(bar);
-      list.appendChild(row);
-    }
-  }
-  if (totLine){ totLine.textContent = `Total votes: ${agg.ballots.toLocaleString()}`; }
-  if (turnEl){ turnEl.textContent = fmtPct(agg.natTurnout); }
-
-  const repEl = document.getElementById('provincesReporting');
-  if (repEl && window.STATE?.gj){
-    const totalProv = window.STATE.gj.features.length;
-    let reporting = 0;
-    for (const r of rowsLive){
-      const sum = parties.reduce((s,p)=> s + (r[`${p}_votes_live`]||0), 0);
-      if (sum > 0) reporting++;
-    }
-    repEl.textContent = `${reporting} / ${totalProv}`;
-  }
-}
-
