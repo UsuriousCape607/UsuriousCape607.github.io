@@ -15,15 +15,7 @@
 // rather than attaching everything to the window object.
 
 // ===== Helpers: formatting & timing =====
-// --- formatting & clock ---
-function fmtPct(x){ return Number.isFinite(x) ? x.toFixed(1) + '%' : '—'; }
-function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
-function fmtCountdown(ms){
-  if (!Number.isFinite(ms) || ms <= 0) return '00:00';
-  const s = Math.floor(ms/1000), m = Math.floor(s/60), r = s % 60;
-  return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
-}
-// --- global progress over a start/end window ---
+// --- formatting & clock ---// --- global progress over a start/end window ---
 function computeProgress(startMs, endMs) {
   const now = Date.now();
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 100;
@@ -423,7 +415,6 @@ async function init() {
   const [gj, csvText] = await Promise.all([j(universe.geojson), t(election.csv)]);
   const rowsFinal = parseCSV(csvText);
   const parties = rowsFinal.length ? detectParties(rowsFinal[0]) : [];
-
   const win = ensureCountWindow(election);
   STATE = { parties, rowsFinal, gj, election, startMs: win.startMs, endMs: win.endMs };
   STATE.scheduleRows = assignReportingSchedule(rowsFinal, STATE.startMs, STATE.endMs);
@@ -457,11 +448,42 @@ async function init() {
   renderDesk(progress, rowsLive, STATE.parties);
   updateMapStyling(modeSelect.value);
 
+  // Header/Status: blink, clock, CPU wiggle
+  (function startStatusBarAnim(){
+    const dot = document.getElementById('statusLiveDot');
+    const cpu = document.getElementById('statusCpu');
+    const hd  = document.getElementById('hdrLiveDot');
+    const hc  = document.getElementById('hdrClock');
+    let t = 0;
+    setInterval(() => {
+      t++;
+      if (dot) dot.textContent = (t % 2) ? '●' : '○';
+      if (hd)  hd.textContent  = (t % 2) ? '●' : '○';
+      if (hc)  hc.textContent  = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      if (cpu){
+        const base = 12, amp = 6;
+        const val = Math.round(base + amp * (0.5 + 0.5*Math.sin(t/2)));
+        cpu.textContent = `CPU Usage: ${val}%`;
+      }
+    }, 1000);
+  })();
+
+  // Header theme switch
+  (function wireTheme(){
+    const themeSel = document.getElementById('themeSel');
+    if (!themeSel) return;
+    themeSel.addEventListener('change', () => {
+      const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(n => (n.href||'').includes('unpkg.com/xp.css'));
+      if (!link) return;
+      link.href = themeSel.value === '98' ? 'https://unpkg.com/xp.css@/dist/98.css' : 'https://unpkg.com/xp.css';
+    });
+  })();
+
   const TICK_MS = 2000;
   const timer = setInterval(() => {
     const now = Date.now();
-    progress = computeProgress(STATE.startMs, STATE.endMs);
-    rowsLive = scaleRowsBySchedule(STATE.scheduleRows, STATE.parties, now);
+    const progress = computeProgress(STATE.startMs, STATE.endMs);
+    const rowsLive = scaleRowsBySchedule(STATE.scheduleRows, STATE.parties, now);
     const byId2 = new Map(rowsLive.map(r => [String(r.district_id), r]));
     STATE.gj.features.forEach(f => { f.properties._row = byId2.get(String(f.properties.district_id)) || null; });
     updateProgressUI(progress);

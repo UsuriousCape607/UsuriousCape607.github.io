@@ -5,7 +5,13 @@
 <title>Yimana RP Elections</title>
 <link rel="stylesheet" href="https://unpkg.com/xp.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>#map{height:calc(100vh - 90px)}.controls{display:flex;gap:12px;align-items:center;padding:8px 12px;border-bottom:1px solid #eee;background:#fff}</style>
+<style>#map{height:calc(100vh - 90px)}.controls{display:flex;gap:12px;align-items:center;padding:8px 12px;border-bottom:1px solid #eee;background:#fff}
+  /* Sticky header */
+  #appHeader { position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 0 rgba(0,0,0,.08); }
+  .status-pill { display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border:1px solid #888; background:#f8f8f8; }
+  #hdrLiveDot { color:#1a7f1a; }
+
+</style>
 
 <style>
   #wrap { display:flex; gap:8px; }
@@ -22,16 +28,51 @@
 
 </head>
 <body>
-<header class="bar"><h1>Yimana RP Elections</h1></header>
-<div class="controls">
-  <label>Mode:
-    <select id="mode">
-      <option value="winner">Winner (by share)</option>
-      <option value="turnout">Turnout (%)</option>
-      <!-- Party shares injected by app.js -->
-    </select>
-  </label>
-</div>
+
+<!-- App Header -->
+<header id="appHeader" class="window" style="margin:8px;">
+  <div class="title-bar">
+    <div class="title-bar-text">
+      <span style="margin-right:8px;">🗳️</span>
+      Unified Korea 1948 — Election Night
+    </div>
+    <div class="title-bar-controls">
+      <button aria-label="Minimize"></button>
+      <button aria-label="Maximize"></button>
+      <button aria-label="Close"></button>
+    </div>
+  </div>
+
+  <div class="window-body">
+    <div class="field-row" style="justify-content:space-between; align-items:center; flex-wrap:wrap;">
+      <menu role="tablist" class="field-row" style="gap:8px; margin:0;">
+        <button id="tabMap" role="tab" aria-selected="true">Map</button>
+        <button id="tabResults" role="tab">Results</button>
+        <button id="tabAbout" role="tab">About</button>
+      </menu>
+
+      <div class="field-row" style="gap:10px; align-items:center;">
+        <span id="hdrLive" class="status-pill">
+          <span id="hdrLiveDot">●</span> Live
+        </span>
+        <span class="muted" id="hdrClock">--:--</span>
+
+        <label for="mode" class="muted">Mode:</label>
+        <select id="mode">
+          <option value="winner">Winner (by share)</option>
+          <option value="turnout">Turnout (%)</option>
+        </select>
+
+        <label class="muted" for="themeSel">Theme:</label>
+        <select id="themeSel">
+          <option value="xp" selected>XP</option>
+          <option value="98">98</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</header>
+
 <div id="wrap">
   <div id="map"></div>
 
