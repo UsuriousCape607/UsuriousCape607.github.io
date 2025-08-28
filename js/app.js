@@ -15,6 +15,7 @@
 // rather than attaching everything to the window object.
 
 // ===== Helpers: formatting & timing =====
+// --- formatting & clock ---
 function fmtPct(x){ return Number.isFinite(x) ? x.toFixed(1) + '%' : '—'; }
 function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
 function fmtCountdown(ms){
@@ -22,6 +23,7 @@ function fmtCountdown(ms){
   const s = Math.floor(ms/1000), m = Math.floor(s/60), r = s % 60;
   return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
 }
+// --- global progress over a start/end window ---
 function computeProgress(startMs, endMs) {
   const now = Date.now();
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 100;
@@ -29,20 +31,24 @@ function computeProgress(startMs, endMs) {
   if (now >= endMs) return 100;
   return ((now - startMs) / (endMs - startMs)) * 100;
 }
+
+// --- persist a fallback 5-minute window so reloads don't jump to 100% ---
 function ensureCountWindow(E) {
   const s = Date.parse(E?.count_start);
   const e = Date.parse(E?.count_end);
-  if (Number.isFinite(s) && Number.isFinite(e) && e > s) return { startMs: s, endMs: e, source: 'manifest' };
+  if (Number.isFinite(s) && Number.isFinite(e) && e > s) return { startMs: s, endMs: e };
+
   try {
     const saved = JSON.parse(localStorage.getItem('countWindow') || 'null');
     if (saved && Number.isFinite(saved.startMs) && Number.isFinite(saved.endMs) && saved.endMs > Date.now()) {
-      return { startMs: saved.startMs, endMs: saved.endMs, source: 'saved' };
+      return saved;
     }
-  } catch (_) {}
+  } catch (_){}
+
   const now = Date.now();
   const fresh = { startMs: now, endMs: now + 5*60*1000 };
-  try { localStorage.setItem('countWindow', JSON.stringify(fresh)); } catch(_){}
-  return { ...fresh, source: 'fresh' };
+  try { localStorage.setItem('countWindow', JSON.stringify(fresh)); } catch (_){}
+  return fresh;
 }
 // ===== District reporting schedule =====
 function assignReportingSchedule(rows, startMs, endMs) {
@@ -50,15 +56,18 @@ function assignReportingSchedule(rows, startMs, endMs) {
   return rows.map(r => {
     let bias = 0.5;
     const did = String(r.district_id || '');
-    if (did.match(/Seoul/i)) bias = 0.25;
-    else if (did.match(/Jeon|Jeolla/i)) bias = 0.35;
-    else if (did.match(/Hamgyeong/i)) bias = 0.65;
-    else if (did.match(/Pyeong/i)) bias = 0.55;
+    if (/Seoul/i.test(did)) bias = 0.25;                // big city, early
+    else if (/Jeon|Jeolla/i.test(did)) bias = 0.35;   //activist province, early
+    else if (/Hamgyeong/i.test(did)) bias = 0.65;       // remote, later
+    else if (/Pyeong/i.test(did)) bias = 0.55;
+
     const startFrac = Math.min(0.9, Math.max(0.05, bias + (Math.random()-0.5)*0.3));
     const endFrac   = Math.min(1.0, Math.max(startFrac + 0.05, startFrac + 0.25 + Math.random()*0.25));
-    const rs = Math.round(startMs + startFrac*span);
-    const re = Math.round(startMs + endFrac*span);
-    return { ...r, report_start: rs, report_end: re };
+    return {
+      ...r,
+      report_start: Math.round(startMs + startFrac*span),
+      report_end:   Math.round(startMs + endFrac*span)
+    };
   });
 }
 function scaleRowsBySchedule(rowsWithSched, parties, now = Date.now()) {
