@@ -7,7 +7,7 @@
     "elections": [{
       "slug": "1948",
       "label": "General Election 1948",
-      "csv": "data/korea_1948.csv"
+      "csv": "data/Korea_1948.csv"
     }]
   }]
 }
