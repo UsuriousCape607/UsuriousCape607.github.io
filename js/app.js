@@ -210,6 +210,91 @@ function makeTip(feature) {
   }
   return name;
 }
+function fmtPct(x){ return Number.isFinite(x) ? x.toFixed(1) + '%' : '—'; }
+function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtCountdown(ms){
+  if (!Number.isFinite(ms) || ms <= 0) return '00:00';
+  const s = Math.floor(ms/1000), m = Math.floor(s/60), r = s % 60;
+  return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+}
+function computeNational(rows, parties){
+  const totals = Object.fromEntries(parties.map(p => [p, 0]));
+  let ballots = 0, eligible = 0, turnoutWeighted = 0;
+  for (const r of rows){
+    const rowTot = parties.reduce((s,p)=> s + (r[`${p}_votes_live`] || 0), 0);
+    ballots += rowTot;
+    eligible += Number(r.eligible_voters_est) || 0;
+    const to = Number(r.turnout_est ?? r.turnout) || 0;
+    const el = Number(r.eligible_voters_est) || 0;
+    turnoutWeighted += to * el;
+    for (const p of parties){ totals[p] += r[`${p}_votes_live`] || 0; }
+  }
+  const natPct = Object.fromEntries(parties.map(p => [p, ballots ? (totals[p]/ballots*100) : 0]));
+  const natTurnout = eligible ? (turnoutWeighted / eligible) : 0;
+  const ordered = [...parties].sort((a,b)=> totals[b]-totals[a]);
+  return { totals, natPct, ballots, eligible, natTurnout, ordered };
+}
+function renderDesk(progress, rowsLive, parties){
+  const pEl = document.getElementById('deskProgress');
+  const pTx = document.getElementById('deskProgressText');
+  if (pEl) pEl.value = progress;
+  if (pTx) pTx.textContent = fmtPct(progress);
+
+  if (window.STATE?.startMs && window.STATE?.endMs){
+    const sEl = document.getElementById('deskStart');
+    const eEl = document.getElementById('deskETA');
+    if (sEl) sEl.textContent = fmtTime(window.STATE.startMs);
+    if (eEl) eEl.textContent = fmtCountdown(Math.max(0, window.STATE.endMs - Date.now()));
+  }
+
+  const agg = computeNational(rowsLive, parties);
+  const list = document.getElementById('raceList');
+  const totLine = document.getElementById('raceTotals');
+  const turnEl = document.getElementById('turnoutNational');
+
+  if (list){
+    list.innerHTML = '';
+    for (const p of agg.ordered){
+      const pct = agg.natPct[p] || 0;
+      const row = document.createElement('div');
+      row.className = 'race-row';
+
+      const name = document.createElement('div');
+      name.className = 'race-name';
+      name.innerHTML = `<span class="swatch" style="background:${partyColor(p)}"></span>${displayPartyName(p)}`;
+
+      const pctEl = document.createElement('div');
+      pctEl.className = 'race-pct';
+      pctEl.textContent = fmtPct(pct);
+
+      const bar = document.createElement('div');
+      bar.className = 'race-bar';
+      const fill = document.createElement('div');
+      fill.className = 'race-fill';
+      fill.style.background = partyColor(p);
+      fill.style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%';
+      bar.appendChild(fill);
+
+      row.appendChild(name);
+      row.appendChild(pctEl);
+      row.appendChild(bar);
+      list.appendChild(row);
+    }
+  }
+  if (totLine) totLine.textContent = `Total votes: ${agg.ballots.toLocaleString()}`;
+  if (turnEl)  turnEl.textContent = fmtPct(agg.natTurnout);
+
+  const repEl = document.getElementById('provincesReporting');
+  if (repEl && window.STATE?.gj){
+    const totalProv = window.STATE.gj.features.length;
+    let reporting = 0;
+    for (const r of rowsLive){
+      const sum = parties.reduce((s,p)=> s + (r[`${p}_votes_live`]||0), 0);
+      if (sum > 0) reporting++;
+    }
+    repEl.textContent = `${reporting} / ${totalProv}`;
+  }
+}
 
 /**
  * Draw or update the progress bar at the top of the page.
@@ -338,16 +423,20 @@ async function init() {
   // Periodically update progress and repaint.  The interval
   // automatically stops once the count is complete.
   const TICK_MS = 2000;
+  const { start, end } = getCountWindow(election);   // your fallback now→now+5m
+  STATE.startMs = start;
+  STATE.endMs   = end;
+
+  // Set up periodic update using setInterval
   const timer = setInterval(() => {
     progress = computeProgress(STATE.startMs, STATE.endMs);
-    updateProgressUI(progress);
-  renderDesk(progress, rowsLive, STATE.parties);
-    // Recompute live rows
     rowsLive = scaleRowsByProgress(STATE.rowsFinal, STATE.parties, progress);
     const byId2 = new Map(rowsLive.map(r => [String(r.district_id), r]));
     STATE.gj.features.forEach(f => {
       f.properties._row = byId2.get(String(f.properties.district_id)) || null;
     });
+    updateProgressUI(progress);
+    renderDesk(progress, rowsLive, STATE.parties);
     updateMapStyling(modeSelect.value);
     if (progress >= 100) clearInterval(timer);
   }, TICK_MS);
@@ -443,3 +532,4 @@ function renderDesk(progress, rowsLive, parties){
     repEl.textContent = `${reporting} / ${totalProv}`;
   }
 }
+

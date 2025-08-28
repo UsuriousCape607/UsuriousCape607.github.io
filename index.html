@@ -34,6 +34,56 @@
 </div>
 <div id="wrap">
   <div id="map"></div>
+
+  <div id="desk" class="window">
+    <div class="title-bar">
+      <div class="title-bar-text">Election Night — Unified Korea 1948</div>
+      <div class="title-bar-controls">
+        <button aria-label="Minimize"></button>
+        <button aria-label="Maximize"></button>
+        <button aria-label="Close"></button>
+      </div>
+    </div>
+    <div class="window-body">
+      <fieldset class="field-row-stacked" style="margin-bottom:10px;">
+        <legend>Count status</legend>
+        <div class="field-row" style="align-items:center; gap:6px;">
+          <label style="min-width:80px;">Reporting:</label>
+          <progress id="deskProgress" value="0" max="100" style="width:100%"></progress>
+          <span id="deskProgressText" class="muted">0.0%</span>
+        </div>
+        <div class="field-row" style="justify-content:space-between;">
+          <span class="muted">Started: <span id="deskStart"></span></span>
+          <span class="muted">ETA: <span id="deskETA"></span></span>
+        </div>
+      </fieldset>
+
+      <fieldset class="field-row-stacked" style="margin-bottom:10px;">
+        <legend>Nationwide vote</legend>
+        <div id="raceList"></div>
+        <div class="muted" id="raceTotals"></div>
+      </fieldset>
+
+      <fieldset class="field-row-stacked">
+        <legend>Turnout</legend>
+        <div class="field-row">
+          <label style="min-width:120px;">Projected national:</label>
+          <b id="turnoutNational">—</b>
+        </div>
+        <div class="field-row">
+          <label style="min-width:120px;">Provinces reporting:</label>
+          <span id="provincesReporting">— / —</span>
+        </div>
+      </fieldset>
+    </div>
+    <div class="status-bar">
+      <p class="status-bar-field">Press F1 for help</p>
+      <p class="status-bar-field">CPU Usage: 14%</p>
+      <p class="status-bar-field">Live</p>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="js/map_core.js"></script>
 <script src="js/app.js"></script>
