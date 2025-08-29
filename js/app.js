@@ -468,17 +468,6 @@ async function init() {
     }, 1000);
   })();
 
-  // Header theme switch
-  (function wireTheme(){
-    const themeSel = document.getElementById('themeSel');
-    if (!themeSel) return;
-    themeSel.addEventListener('change', () => {
-      const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(n => (n.href||'').includes('unpkg.com/xp.css'));
-      if (!link) return;
-      link.href = themeSel.value === '98' ? 'https://unpkg.com/xp.css@/dist/98.css' : 'https://unpkg.com/xp.css';
-    });
-  })();
-
   const TICK_MS = 2000;
   const timer = setInterval(() => {
     const now = Date.now();
