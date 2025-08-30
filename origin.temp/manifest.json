@@ -1,0 +1,13 @@
+{
+  "title": "Yimana RP Elections",
+  "universes": [{
+    "key": "korea",
+    "label": "Unified Korea (Alt 1948)",
+    "geojson": "maps/korea_boundaries.geojson",
+    "elections": [{
+      "slug": "1948",
+      "label": "General Election 1948",
+      "csv": "data/Korea_1948.csv"
+    }]
+  }]
+}

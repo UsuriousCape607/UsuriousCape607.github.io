@@ -11,12 +11,21 @@
   .status-pill { display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border:1px solid #888; background:#f8f8f8; }
   #hdrLiveDot { color:#1a7f1a; }
 
+
+/* Doc viewer portrait + content layout */
+.tno-body { display:block; overflow:hidden; }
+.tno-portrait { float:left; margin:0 12px 8px 0; max-width:150px; }
+.tno-portrait img { display:block; max-width:100%; height:auto; border:1px solid #aaa; }
+/* .tno-content removed: empty ruleset */
+
+
 </style>
 
 <style>
-  #wrap { display:flex; gap:8px; }
-  #map { flex: 1 1 auto; min-height: 80vh; }
-  #desk { width: 360px; flex: 0 0 360px; }
+  #wrap { display: flex; gap: 8px; margin: 8px; }         /* add margin so it’s not flush-left */
+  #panelMap { display: flex; gap: 8px; flex: 1 1 100%; }   /* let the map+desk span the width */
+  #map { flex: 1 1 auto; min-height: 80vh; }               /* keep your height rule too */
+  
   .race-row { display:flex; align-items:center; gap:8px; margin:6px 0; }
   .race-name { width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .race-pct  { width:48px; text-align:right; }
@@ -24,6 +33,7 @@
   .race-fill { position:absolute; top:0; left:0; height:100%; width:0%; transition:width .6s ease; }
   .swatch { display:inline-block; width:10px; height:10px; margin-right:6px; vertical-align:middle; border:1px solid #333; }
   .muted { color:#555; font-size:12px; }
+  #panelMap { display: flex; gap: 8px; }
 </style>
 
 </head>
@@ -42,7 +52,6 @@
       <button aria-label="Close"></button>
     </div>
   </div>
-
   <div class="window-body">
     <div class="field-row" style="justify-content:space-between; align-items:center; flex-wrap:wrap;">
       <menu role="tablist" class="field-row" style="gap:8px; margin:0;">
@@ -50,77 +59,162 @@
         <button id="tabResults" role="tab">Results</button>
         <button id="tabAbout" role="tab">About</button>
       </menu>
-
       <div class="field-row" style="gap:10px; align-items:center;">
         <span id="hdrLive" class="status-pill">
           <span id="hdrLiveDot">●</span> Live
         </span>
         <span class="muted" id="hdrClock">--:--</span>
-
-        <label for="mode" class="muted">Mode:</label>
-        <select id="mode">
-          <option value="winner">Winner (by share)</option>
-          <option value="turnout">Turnout (%)</option>
+        <!-- Media controls in header -->
+        <label for="musicSrcHeader" class="muted">Music:</label>
+        <select id="musicSrcHeader" style="min-width:80px;">
+          <option value="off">Off</option>
+          <option value="youtube">YouTube</option>
+          <option value="spotify">Spotify</option>
         </select>
+        <input id="musicInputHeader" type="text" placeholder="YouTube/Spotify link or ID" style="width:140px;" />
+        <button id="musicPlayHeader" aria-label="Play">▶</button>
+        <button id="musicPauseHeader" aria-label="Pause">⏸</button>
+        <button id="musicDefaultHeader" aria-label="Default">Default</button>
       </div>
     </div>
   </div>
 </header>
 
 <div id="wrap">
-  <div id="map"></div>
+  <div id="panelMap">
+    <div id="map"></div>
 
-  <div id="desk" class="window">
-    <div class="title-bar">
-      <div class="title-bar-text">Election Night — Unified Korea 1948</div>
-      <div class="title-bar-controls">
-        <button aria-label="Minimize"></button>
-        <button aria-label="Maximize"></button>
-        <button aria-label="Close"></button>
+    <div id="desk" class="window">
+      <div class="title-bar">
+        <div class="title-bar-text">Election Night — Unified Korea 1948</div>
+        <div class="title-bar-controls">
+          <button aria-label="Minimize"></button>
+          <button aria-label="Maximize"></button>
+          <button aria-label="Close"></button>
+        </div>
+      </div>
+      <div class="window-body">
+        <fieldset class="field-row-stacked" style="margin-bottom:10px;">
+          <legend>Count status</legend>
+          <div class="field-row" style="align-items:center; gap:6px;">
+            <label style="min-width:80px;">Reporting:</label>
+            <progress id="deskProgress" value="0" max="100" style="width:100%"></progress>
+            <span id="deskProgressText" class="muted">0.0%</span>
+          </div>
+          <div class="field-row" style="justify-content:space-between;">
+            <span class="muted">Started: <span id="deskStart"></span></span>
+            <span class="muted">ETA: <span id="deskETA"></span></span>
+          </div>
+        </fieldset>
+
+        <fieldset class="field-row-stacked" style="margin-bottom:10px;">
+          <legend>Nationwide vote</legend>
+          <div id="raceList"></div>
+          <div class="muted" id="raceTotals"></div>
+        </fieldset>
+
+        <fieldset class="field-row-stacked">
+          <legend>Turnout</legend>
+          <div class="field-row">
+            <label style="min-width:120px;">Projected national:</label>
+            <b id="turnoutNational">—</b>
+          </div>
+          <div class="field-row">
+            <label style="min-width:120px;">Provinces reporting:</label>
+            <span id="provincesReporting">— / —</span>
+          </div>
+        </fieldset>
+        <!-- Docs Viewer (nested inside the desk) -->
+        <fieldset class="field-row-stacked" id="docsSection" style="margin-top:10px;">
+          <legend>Docs Viewer</legend>
+
+          <div class="field-row" style="align-items:center; gap:8px; margin-bottom:6px;">
+            <label for="docSelect" class="muted" style="min-width:80px;">Document:</label>
+            <select id="docSelect" style="flex:1; min-width:180px;">
+              <!-- Update these to your real docs -->
+              <option value="docs/overview.md">Overview</option>
+              <option value="docs/rules.md">Rules</option>
+            </select>
+          </div>
+
+  <div id="docPane" class="doc-pane"></div>
+        </fieldset>
+      </div>
+      <style>/* Docs viewer inside desk */
+        #docsSection .doc-pane {
+  max-height: 40vh;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #aaa;
+  background: #fff;
+        }
+      </style>
+      <div class="status-bar">
+        <p class="status-bar-field">Press F1 for help</p>
+        <p class="status-bar-field" id="statusCpu">CPU Usage: 14%</p>
+        <p class="status-bar-field"><span id="statusLiveDot">●</span> Live</p>
       </div>
     </div>
-    <div class="window-body">
-      <fieldset class="field-row-stacked" style="margin-bottom:10px;">
-        <legend>Count status</legend>
-        <div class="field-row" style="align-items:center; gap:6px;">
-          <label style="min-width:80px;">Reporting:</label>
-          <progress id="deskProgress" value="0" max="100" style="width:100%"></progress>
-          <span id="deskProgressText" class="muted">0.0%</span>
-        </div>
-        <div class="field-row" style="justify-content:space-between;">
-          <span class="muted">Started: <span id="deskStart"></span></span>
-          <span class="muted">ETA: <span id="deskETA"></span></span>
-        </div>
-      </fieldset>
-
-      <fieldset class="field-row-stacked" style="margin-bottom:10px;">
-        <legend>Nationwide vote</legend>
-        <div id="raceList"></div>
-        <div class="muted" id="raceTotals"></div>
-      </fieldset>
-
-      <fieldset class="field-row-stacked">
-        <legend>Turnout</legend>
-        <div class="field-row">
-          <label style="min-width:120px;">Projected national:</label>
-          <b id="turnoutNational">—</b>
-        </div>
-        <div class="field-row">
-          <label style="min-width:120px;">Provinces reporting:</label>
-          <span id="provincesReporting">— / —</span>
-        </div>
-      </fieldset>
-    </div>
-    <div class="status-bar">
-      <p class="status-bar-field">Press F1 for help</p>
-      <p class="status-bar-field" id="statusCpu">CPU Usage: 14%</p>
-      <p class="status-bar-field"><span id="statusLiveDot">●</span> Live</p>
-    </div>
+    
   </div>
+  <div id="panelResults" style="display:none;"></div>
+  <div id="panelAbout" style="display:none;"></div>
 </div>
 
+
+
+<!-- Media Player Dock (draggable, YouTube/Spotify integrations) -->
+<div id="mediaDock" class="window" style="position:fixed; left:40px; top:120px; z-index:1200; min-width:320px; display:none;">
+  <div class="title-bar">
+    <div class="title-bar-text">Media Player</div>
+    <div class="title-bar-controls">
+      <button id="mediaDockMin" aria-label="Minimize"></button>
+      <button id="mediaDockClose" aria-label="Close"></button>
+    </div>
+  </div>
+  <div class="window-body">
+    <!-- Only embed containers, no controls -->
+    <div id="ytContainer" style="margin-top:8px; display:none;">
+      <div id="ytPlayer"></div>
+    </div>
+    <div id="spotifyContainer" style="margin-top:8px; display:none;"></div>
+  </div>
+</div>
+<!-- Media dock: minimize & drag affordance -->
+<style>
+#mediaDock.collapsed .window-body { display: none; }
+#mediaDock .title-bar { cursor: move; }
+</style>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.pattern/dist/leaflet.pattern.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.pattern/dist/leaflet.pattern.css">
+<script src="https://www.youtube.com/iframe_api"></script>
 <script src="js/map_core.js"></script>
 <script src="js/app.js"></script>
+<script>
+(function setupTabs(){
+  const btnMap = document.getElementById('tabMap');
+  const btnRes = document.getElementById('tabResults');
+  const btnAbt = document.getElementById('tabAbout');
+  const panelMap = document.getElementById('panelMap');
+  const panelRes = document.getElementById('panelResults');
+  const panelAbt = document.getElementById('panelAbout');
+  if (!btnMap || !btnRes || !btnAbt || !panelMap || !panelRes || !panelAbt) return;
+  function select(tab){
+    const isMap = tab==='map', isRes = tab==='results', isAbt = tab==='about';
+    panelMap.style.display = isMap ? '' : 'none';
+    panelRes.style.display = isRes ? '' : 'none';
+    panelAbt.style.display = isAbt ? '' : 'none';
+    btnMap.setAttribute('aria-selected', String(isMap));
+    btnRes.setAttribute('aria-selected', String(isRes));
+    btnAbt.setAttribute('aria-selected', String(isAbt));
+  }
+  btnMap.addEventListener('click', ()=>select('map'));
+  btnRes.addEventListener('click', ()=>select('results'));
+  btnAbt.addEventListener('click', ()=>select('about'));
+  select('map');
+})();
+</script>
 </body></html>
 
