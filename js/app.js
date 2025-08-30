@@ -922,7 +922,7 @@ return out.join('\n');
       const name = meta.name; const tag = meta.affiliation; const pic = (/^https?:/i.test(meta.portrait)? meta.portrait : '');
       const bodyHtml = md(meta.body, baseUrl);
       const banner = `<div class="tno-banner"><div class="tno-name">${name||''}</div>${tag?`<div class="tno-tag">${tag}</div>`:''}</div>`;
-      const left = pic? `<div class="tno-portrait"><img src="${pic}" alt="${name||''}" loading…="lazy"></div>`:'';
+      const left = pic? `<div class="tno-portrait"><img src="${pic}" alt="${name||''}" loading="lazy"></div>`:'';
       const body = `<div class="tno-body">${left}<div class="tno-content">${bodyHtml}</div></div>`;
       return `<div class="tno-card">${banner}${body}</div>`;
     }
