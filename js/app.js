@@ -458,6 +458,21 @@ function renderDesk(progress, rowsLive, parties){
   }
 
   const agg = computeNational(rowsLive, parties);
+  // after: const agg = computeNational(rowsLive, parties);
+(function applyThemeFromLeader(){
+  try {
+    const leaderKey = agg.ordered && agg.ordered[0];
+    const root = document.documentElement;
+    if (leaderKey) {
+      const c = partyColor(leaderKey);         // already defined in your codebase
+      const weak = typeof partySoftColor === 'function'
+        ? partySoftColor(leaderKey)
+        : c;
+      root.style.setProperty('--accent', c);
+      root.style.setProperty('--accent-weak', weak);
+    }
+  } catch (_) {}
+})();
   const list = document.getElementById('raceList');
   const totLine = document.getElementById('raceTotals');
   const turnEl = document.getElementById('turnoutNational');
@@ -842,46 +857,54 @@ async function init() {
       const toStrong = (s)=> s.replace(/\*\*(.*?)\*\*/g,'<b>$1</b>');
       const imgMD  = /^!\[([^\]]*)\]\(([^\s)]+)\)\s*$/;
       const imgURL = /^([^\s]+\.(?:png|jpe?g|gif|webp))\s*$/i;
-      const out=[]; let inList=false;
-      String(txt).split(/\r?\n/).forEach(line=>{
-        if (/^\s*$/.test(line)) { if (inList){ out.push('</ul>'); inList=false; } out.push(''); return; }
-        let m;
-        // Pass through raw HTML images/links (assumed safe in local docs)
-        if (/^\s*<img\s/i.test(line) || /^\s*<a\s/i.test(line)) { if (inList){ out.push('</ul>'); inList=false; } out.push(line); return; }
-        if ((m = line.match(/^###\s+(.*)/))) { if (inList){ out.push('</ul>'); inList=false; } out.push(`<h4>${escape(m[1])}</h4>`); return; }
-        if ((m = line.match(/^##\s+(.*)/)))  { if (inList){ out.push('</ul>'); inList=false; } out.push(`<h3>${escape(m[1])}</h3>`); return; }
-        if ((m = line.match(/^#\s+(.*)/)))   { if (inList){ out.push('</ul>'); inList=false; } out.push(`<h2>${escape(m[1])}</h2>`); return; }
-        if ((m = line.match(/^\-\s+(.*)/))) {
-          if (!inList){ out.push('<ul>'); inList=true; }
-          let bodyRaw = m[1].trim();
-          if (imgURL.test(bodyRaw)) {
-            const src = resolveUrl(bodyRaw,true);
-            if (src) { out.push(`<li><img src="${src}" Loading…="lazy" style="max-width:100%;height:auto;"></li>`); }
-            else { out.push(`<li><em class="muted">[image omitted]</em></li>`); }
-            return;
-          }
-          let body = toStrong(toLink(escape(bodyRaw)));
-          out.push(`<li>${body}</li>`); return;
-        }
-        if ((m = line.match(imgMD))) {
-          if (inList){ out.push('</ul>'); inList=false; }
-          const src = resolveUrl(m[2], true);
-          if (src) out.push(`<p><img src="${src}" alt="${escape(m[1])}" Loading…="lazy" style="max-width:100%;height:auto;"></p>`);
-          else out.push(`<p><em class="muted">[image omitted]</em></p>`);
-          return;
-        }
-        if ((m = line.match(imgURL))) {
-          if (inList){ out.push('</ul>'); inList=false; }
-          const src = resolveUrl(m[1], true);
-          if (src) out.push(`<p><img src="${src}" Loading…="lazy" style="max-width:100%;height:auto;"></p>`);
-          else out.push(`<p><em class="muted">[image omitted]</em></p>`);
-          return;
-        }
-        let body = toStrong(toLink(escape(line)));
-        out.push(`<p>${body}</p>`);
-      });
-      if (inList) out.push('</ul>');
-      return out.join('\n');
+      const out = [];
+let inList = false;
+let para = [];   // collect lines for a paragraph
+
+function flushPara() {
+  if (!para.length) return;
+  const joined = para.join(' ').replace(/\s+/g, ' ').trim();
+  const body = toStrong(toLink(escape(joined)));
+  out.push(`<p>${body}</p>`);
+  para.length = 0;
+}
+
+String(txt).split(/\r?\n/).forEach(line => {
+  // blank line => end list/paragraph
+  if (/^\s*$/.test(line)) { if (inList){ out.push('</ul>'); inList=false; } flushPara(); out.push(''); return; }
+
+  // pass-through raw HTML images/links
+  if (/^\s*<(img|a)\s/i.test(line)) { if (inList){ out.push('</ul>'); inList=false; } flushPara(); out.push(line); return; }
+
+  // headings (flush current paragraph first)
+  let m;
+  if ((m = line.match(/^###\s+(.*)/))) { if (inList){ out.push('</ul>'); inList=false; } flushPara(); out.push(`<h4>${escape(m[1])}</h4>`); return; }
+  if ((m = line.match(/^##\s+(.*)/)))  { if (inList){ out.push('</ul>'); inList=false; } flushPara(); out.push(`<h3>${escape(m[1])}</h3>`); return; }
+  if ((m = line.match(/^#\s+(.*)/)))   { if (inList){ out.push('</ul>'); inList=false; } flushPara(); out.push(`<h2>${escape(m[1])}</h2>`); return; }
+
+  // lists (flush paragraph before list items)
+  if ((m = line.match(/^\-\s+(.*)/))) {
+    flushPara();
+    if (!inList){ out.push('<ul>'); inList=true; }
+    let bodyRaw = m[1].trim();
+    let body = toStrong(toLink(escape(bodyRaw)));
+    out.push(`<li>${body}</li>`); return;
+  }
+
+  // images (Markdown or bare URL) end a paragraph
+  const imgMD  = /^!\[([^\]]*)\]\(([^\s)]+)\)\s*$/;
+  const imgURL = /^([^\s]+\.(?:png|jpe?g|gif|webp))\s*$/i;
+  if ((m = line.match(imgMD))) { if (inList){ out.push('</ul>'); inList=false; } flushPara(); out.push(`<p><img src="${resolveUrl(m[2], true)}" alt="${escape(m[1])}" loading="lazy" style="max-width:100%;height:auto;"></p>`); return; }
+  if ((m = line.match(imgURL))) { if (inList){ out.push('</ul>'); inList=false; } flushPara(); out.push(`<p><img src="${resolveUrl(m[1], true)}" loading="lazy" style="max-width:100%;height:auto;"></p>`); return; }
+
+  // otherwise: accumulate into current paragraph
+  para.push(line.trim());
+});
+
+if (inList) out.push('</ul>');
+flushPara();
+return out.join('\n');
+
     };
     function extractMeta(raw){
       const lines = String(raw).split(/\r?\n/);
@@ -899,7 +922,7 @@ async function init() {
       const name = meta.name; const tag = meta.affiliation; const pic = (/^https?:/i.test(meta.portrait)? meta.portrait : '');
       const bodyHtml = md(meta.body, baseUrl);
       const banner = `<div class="tno-banner"><div class="tno-name">${name||''}</div>${tag?`<div class="tno-tag">${tag}</div>`:''}</div>`;
-      const left = pic? `<div class="tno-portrait"><img src="${pic}" alt="${name||''}" Loading…="lazy"></div>`:'';
+      const left = pic? `<div class="tno-portrait"><img src="${pic}" alt="${name||''}" loading…="lazy"></div>`:'';
       const body = `<div class="tno-body">${left}<div class="tno-content">${bodyHtml}</div></div>`;
       return `<div class="tno-card">${banner}${body}</div>`;
     }

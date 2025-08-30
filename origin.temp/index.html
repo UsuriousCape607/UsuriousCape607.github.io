@@ -24,6 +24,65 @@
   .race-fill { position:absolute; top:0; left:0; height:100%; width:0%; transition:width .6s ease; }
   .swatch { display:inline-block; width:10px; height:10px; margin-right:6px; vertical-align:middle; border:1px solid #333; }
   .muted { color:#555; font-size:12px; }
+:root {
+  --accent: #2b8cbe;   /* fallback color if no leader */
+  --accent-weak: #a7cbe2;
+}
+
+/* Use accent vars in tasteful spots */
+.title-bar .title-bar-text { color: var(--accent); }
+.status-pill { border-color: var(--accent); }
+#progressFill { background: var(--accent); }
+a, .party-link { color: var(--accent); }
+.race-fill { background: var(--accent); } /* per-party inline can override */
+
+</style>
+<style>
+/* 1) Remove the "box in a box": let the card itself be the only frame */
+#docsSection { border: 0; padding: 0; }
+#docsSection > legend { display: none; }
+#docsSection .doc-pane {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  max-height: 40vh;         /* keep the scroll behavior */
+  overflow: auto;
+}
+
+/* 2) TNO card look */
+.tno-card {
+  border: 1px solid #1a1410;          /* very dark brown edge */
+  background: #f6f3ee;                /* parchment-ish body */
+  margin: 8px 0;
+}
+
+/* Dark, stacked banner with name then affiliation */
+.tno-banner {
+  display: flex;
+  flex-direction: column;              /* stack name over tag */
+  align-items: flex-start;             /* left aligned */
+  gap: 2px;
+  padding: 8px 10px;
+  color: #f4e8d7;                      /* warm light text */
+  background: linear-gradient(#2b211c, #1f1814);  /* black-brown */
+  border-bottom: 1px solid #120e0b;
+}
+.tno-name { font-weight: 800; letter-spacing: .2px; }
+.tno-tag  { font-size: 12px; color: #cdbba7; }     /* softer affiliation */
+
+/* Body + portrait layout */
+.tno-body { display: block; overflow: hidden; padding: 10px; }
+.tno-portrait { float: left; margin: 0 12px 8px 0; max-width: 150px; }
+.tno-portrait img { display: block; max-width: 100%; height: auto; border: 1px solid #6b5a49; }
+.tno-content { display: block; overflow: hidden; }
+
+/* Typographic polish inside docs */
+#docsSection .doc-pane p, #docsSection .doc-pane li { overflow-wrap: anywhere; }
+#docsSection .doc-pane img { display: block; max-width: 100%; height: auto; }
+
+/* Keep the desk column stable; map flexes */
+#desk { flex: 0 0 clamp(320px, 28vw, 420px); max-width: clamp(320px, 28vw, 420px); }
+#map  { flex: 1 1 0; }
 </style>
 
 </head>
