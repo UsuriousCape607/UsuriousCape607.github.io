@@ -864,7 +864,7 @@ let para = [];   // collect lines for a paragraph
 function flushPara() {
   if (!para.length) return;
   const joined = para.join(' ').replace(/\s+/g, ' ').trim();
-  const body = toStrong(toLink(escape(joined)));
+  const body = DocViewer.bbcode( toStrong(toLink(escape(joined))) );
   out.push(`<p>${body}</p>`);
   para.length = 0;
 }
@@ -887,8 +887,8 @@ String(txt).split(/\r?\n/).forEach(line => {
     flushPara();
     if (!inList){ out.push('<ul>'); inList=true; }
     let bodyRaw = m[1].trim();
-    let body = toStrong(toLink(escape(bodyRaw)));
-    out.push(`<li>${body}</li>`); return;
+    let body = DocViewer.bbcode( toStrong(toLink(escape(bodyRaw))) );
+    out.push(`<li>${body}</li>`);
   }
 
   // images (Markdown or bare URL) end a paragraph
@@ -928,7 +928,7 @@ return out.join('\n');
     }
     async function load(u){
       try {
-        pane.innerHTML = '<span class="muted">Loading…�</span>';
+        pane.innerHTML = '<span class="muted">Loading…</span>';
         const r = await fetch(u);
         const t = await r.text();
         pane.innerHTML = renderCard(t, u);
@@ -1067,7 +1067,12 @@ init();
   const dock    = document.getElementById('mediaDock');
   const ytWrap  = document.getElementById('ytContainer');
   const spWrap  = document.getElementById('spotifyContainer');
-  const vol     = document.getElementById('musicVol'); // optional
+  const vol = document.getElementById('musicVol') || {
+  value: '40',
+  disabled: true,
+  addEventListener: () => {}
+  };
+
 
   // Only the header controls + dock are required; volume is optional now
   if (!srcSelH || !inputH || !playH || !pauseH || !defBtnH || !dock || !ytWrap || !spWrap) return;

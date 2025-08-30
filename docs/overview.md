@@ -12,3 +12,6 @@ context, and rules-of-thumb while you explore the map.
 This is a fictionalized, interactive visualization inspired by
 historical actors and parties.
 
+This is [color=royalblue]blue[/color] and [b]bold[/b].
+- [color=#b22222]Crimson bullet[/color]
+
