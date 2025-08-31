@@ -131,6 +131,74 @@ function getStripePattern(leaderKey, runnerKey){
   return p;
 }
 
+// --- Plugin-free stripe fallback ---
+const __stripeCache = new Map();
+function __getMapSvgRoot() {
+  const pane = MAP && MAP.getPanes && MAP.getPanes().overlayPane;
+  return pane ? pane.querySelector('svg') : null;
+}
+function __ensureStripeDef(color1, color2, key) {
+  const svg = __getMapSvgRoot();
+  if (!svg) return null;
+  let defs = svg.querySelector('defs');
+  if (!defs) {
+    defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    svg.insertBefore(defs, svg.firstChild);
+  }
+  const id = `stripe_${(key||`${color1}_${color2}`).replace(/[^A-Za-z0-9_-]/g,'_')}`;
+  if (__stripeCache.has(id)) return id;
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const p = document.createElementNS(NS, 'pattern');
+  p.setAttribute('id', id);
+  p.setAttribute('patternUnits', 'userSpaceOnUse');
+  p.setAttribute('width', '12');
+  p.setAttribute('height', '12');
+
+  const bg = document.createElementNS(NS, 'rect');
+  bg.setAttribute('width','12'); bg.setAttribute('height','12');
+  bg.setAttribute('fill', color2);
+  p.appendChild(bg);
+
+  const line = document.createElementNS(NS, 'path');
+  line.setAttribute('d', 'M0,0 L12,12');
+  line.setAttribute('stroke', color1);
+  line.setAttribute('stroke-width', '6');
+  line.setAttribute('shape-rendering', 'crispEdges');
+  p.appendChild(line);
+
+  defs.appendChild(p);
+  __stripeCache.set(id, true);
+  return id;
+}
+function __applyStripeFallback() {
+  if (!LAYER || !STATE) return;
+  const parties = STATE.parties;
+  LAYER.eachLayer(layer => {
+    const f = layer && layer.feature; if (!f) return;
+    const row = (f.properties && f.properties._row) || {};
+    const hasReported = (row._totalVotes||0) > 0;
+    if (!hasReported || (row._call && row._call.winner)) { if (layer._path) layer._path.style.fill = ''; return; }
+
+    const t2 = topTwo(row, parties);
+    const st = raceCallStatus(row, parties);
+    if (!(t2 && t2.leader && t2.runnerUp) || st.called) { if (layer._path) layer._path.style.fill = ''; return; }
+
+    if (st.label === 'tossup' && layer._path) {
+      const c1 = partyColor(t2.leader.key);
+      const c2 = partyColor(t2.runnerUp.key);
+      const id = __ensureStripeDef(c1, c2, `${t2.leader.key}_${t2.runnerUp.key}`);
+      if (id) {
+        layer._path.style.fill = `url(#${id})`;
+        layer._path.style.fillOpacity = 0.9;
+      }
+    } else if (layer._path) {
+      layer._path.style.fill = '';
+    }
+  });
+}
+
+
 /**
  * Compute a percentage (0?100) representing how far the current time
  * lies between two timestamps (milliseconds).  Returns 0 if the
@@ -239,36 +307,49 @@ function updateMapStyling(mode) {
   if (!LAYER || !STATE) return;
   const parties = STATE.parties;
   if (mode === 'winner') {
-    LAYER.setStyle(f => {
-      const row = f.properties._row || {};
-      const hasReported = (row._totalVotes||0) > 0;
-      const t2 = hasReported ? topTwo(row, parties) : null;
-      const status = hasReported ? raceCallStatus(row, parties) : { called:false, lead:0 };
-      let style = { color:'#666', weight:0.6, fillOpacity:0.9 };
-      // Respect persistent calls
-      if (row._call && row._call.winner){
-        style.fillColor = partyColor(row._call.winner);
-        style.fillPattern = null;
-        return style;
+  LAYER.setStyle(f => {
+    const row = f.properties._row || {};
+    const hasReported = (row._totalVotes||0) > 0;
+    if (!hasReported) return { color:'#666', weight:0.6, fillColor:'#bbb', fillOpacity:0.9, fillPattern:null };
+
+    const parties = STATE.parties;
+    const t2 = topTwo(row, parties);
+    if (!(t2 && t2.leader && t2.leader.key)) {
+      return { color:'#666', weight:0.6, fillColor:'#bbb', fillOpacity:0.9, fillPattern:null };
+    }
+
+    const status = raceCallStatus(row, parties);
+
+    // Persisted calls
+    if (row._call && row._call.winner) {
+      return { color:'#666', weight:0.6, fillColor: partyColor(row._call.winner), fillOpacity:0.9, fillPattern:null };
+    }
+
+    // Called (live)
+    if (status.called) {
+      return { color:'#666', weight:0.6, fillColor: partyColor(t2.leader.key), fillOpacity:0.9, fillPattern:null };
+    }
+
+    // Toss-up → STRIPES  (use your sim's label, not lead < 2)
+    if (status.label === 'tossup' && t2.runnerUp && t2.runnerUp.key) {
+      const patt = getStripePattern(t2.leader.key, t2.runnerUp.key);
+      if (patt) {
+        return {
+          color:'#666', weight:0.6,
+          fill:true, fillOpacity:0.9,
+          // Nuke any previously-set solid fill so pattern wins
+          fillColor: 'transparent',
+          fillPattern: patt
+        };
       }
-      if (!hasReported || !t2 || !t2.leader || !t2.leader.key){
-        style.fillColor = '#bbb';
-        style.fillPattern = null;
-        return style;
-      }
-      if (status.called){
-        style.fillColor = partyColor(t2.leader.key);
-        style.fillPattern = null;
-      } else if (status.lead < 2 && t2.runnerUp && t2.runnerUp.key){
-        const patt = getStripePattern(t2.leader.key, t2.runnerUp.key);
-        if (patt){ style.fillColor = undefined; style.fillPattern = patt; }
-        else { style.fillColor = mixPartyColors(t2.leader.key, t2.runnerUp.key); style.fillPattern = null; }
-      } else {
-        style.fillColor = partySoftColor(t2.leader.key);
-        style.fillPattern = null;
-      }
-      return style;
-    });
+      if (!patt) console.warn('No StripePattern (falling back to blend). Present?', !!(window.L && L.StripePattern));
+      // Safety fallback if plugin failed:
+      if (!(window.L && L.StripePattern)) __applyStripeFallback();
+    }
+
+    // Lean (uncalled, not toss-up)
+    return { color:'#666', weight:0.6, fillColor: partySoftColor(t2.leader.key), fillOpacity:0.9, fillPattern:null };
+  });
     const N = Math.min(parties.length, 10);
     const items = parties.slice(0, N)
       .map(p => `<div><span class="swatch" style="background:${partyColor(p)}"></span>${displayPartyName(p)}</div>`)
@@ -657,7 +738,7 @@ async function init() {
   };
   XPZoom.addTo(MAP);
   LAYER = L.geoJSON(gj, {
-    style: () => ({ color:'#666', weight:0.6, fillColor:'#eee', fillOpacity:0.9 }),
+    style: () => ({ color:'#666', weight:0.6, fillColor:'#eee', fillOpacity:0.9, fill:true }),
     onEachFeature: (feature, layer) => {
       layer.on('mousemove', e => {
         HOVER = { layer, feature, latlng: e.latlng };

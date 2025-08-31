@@ -6,6 +6,15 @@
 <link rel="stylesheet" href="https://unpkg.com/xp.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="css/docs_viewer.css">
+
+<style>
+  /* Disable ugly black outline when provinces are clicked */
+  .leaflet-interactive:focus {
+    outline: none;
+  }
+</style>
+
+
 <style>.controls{display:flex;gap:12px;align-items:center;padding:8px 12px;border-bottom:1px solid #eee;background:#fff}
   /* Sticky header */
   #appHeader { position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 0 rgba(0,0,0,.08); }
@@ -207,8 +216,8 @@
 </style>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.pattern/dist/leaflet.pattern.min.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.pattern/dist/leaflet.pattern.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet.pattern@0.9.0/dist/leaflet.pattern.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.pattern@0.9.0/dist/leaflet.pattern.css">
 <script src="https://www.youtube.com/iframe_api"></script>
 <script src="js/doc_viewer.js"></script>
 <script src="js/map_core.js"></script>

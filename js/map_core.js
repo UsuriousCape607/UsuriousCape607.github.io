@@ -143,3 +143,4 @@ function apportion(total, weights){
   for (let k=0; k<fracs.length && left>0; k++, left--){ floors[fracs[k].i]++; }
   return floors;
 }
+
