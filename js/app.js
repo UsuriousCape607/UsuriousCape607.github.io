@@ -539,43 +539,36 @@ function renderDesk(progress, rowsLive, parties){
   }
 
   const agg = computeNational(rowsLive, parties);
-  // after: const agg = computeNational(rowsLive, parties);
-(function applyThemeFromLeader(){
-  try {
-    const leaderKey = agg.ordered && agg.ordered[0];
-    const root = document.documentElement;
-    if (leaderKey) {
-      const c = partyColor(leaderKey);         // already defined in your codebase
-      const weak = typeof partySoftColor === 'function'
-        ? partySoftColor(leaderKey)
-        : c;
-      root.style.setProperty('--accent', c);
-      root.style.setProperty('--accent-weak', weak);
-    }
-  } catch (_) {}
-})();
+  (function applyThemeFromLeader(){
+    try {
+      const leaderKey = agg.ordered && agg.ordered[0];
+      const root = document.documentElement;
+      if (leaderKey) {
+        const c = partyColor(leaderKey);
+        const weak = typeof partySoftColor === 'function' ? partySoftColor(leaderKey) : c;
+        root.style.setProperty('--accent', c);
+        root.style.setProperty('--accent-weak', weak);
+      }
+    } catch (_) {}
+  })();
   const list = document.getElementById('raceList');
   const totLine = document.getElementById('raceTotals');
   const turnEl = document.getElementById('turnoutNational');
-
   if (list){
-    list.innerHTML = '';
+    const frag = document.createDocumentFragment();
     for (const p of agg.ordered){
       const pct = agg.natPct[p] || 0;
       const row = document.createElement('div');
       row.className = 'race-row';
-
       const name = document.createElement('div');
       name.className = 'race-name';
       name.innerHTML = `<span class="swatch" style="background:${partyColor(p)}"></span>`+
         `<button class="party-link" data-party="${p}" style="background:transparent;border:0;color:#06c;cursor:pointer;padding:0;text-decoration:underline;">${displayPartyName(p)}</button>`;
       const linkBtn = name.querySelector('.party-link');
       if (linkBtn){ linkBtn.addEventListener('click', () => openCandidateDoc(p)); }
-
       const pctEl = document.createElement('div');
       pctEl.className = 'race-pct';
       pctEl.textContent = fmtPct(pct);
-
       const bar = document.createElement('div');
       bar.className = 'race-bar';
       const fill = document.createElement('div');
@@ -583,16 +576,16 @@ function renderDesk(progress, rowsLive, parties){
       fill.style.background = partyColor(p);
       fill.style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%';
       bar.appendChild(fill);
-
       row.appendChild(name);
       row.appendChild(pctEl);
       row.appendChild(bar);
-      list.appendChild(row);
+      frag.appendChild(row);
     }
+    list.innerHTML = '';
+    list.appendChild(frag);
   }
   if (totLine) totLine.textContent = `Total votes: ${agg.ballots.toLocaleString()}`;
   if (turnEl)  turnEl.textContent = fmtPct(agg.natTurnout);
-
   const repEl = document.getElementById('provincesReporting');
   if (repEl && window.STATE){
     const totalProv = window.STATE.totalDistricts || new Set(window.STATE.rowsFinal.map(r=>String(r.district_id))).size;
@@ -1099,14 +1092,14 @@ return out.join('\n');
     const hd  = document.getElementById('hdrLiveDot');
     const hc  = document.getElementById('hdrClock');
     let t = 0;
-    setInterval(() => {
+    setInterval(function() {
       t++;
       if (dot) dot.textContent = (t % 2) ? '●' : '○';
       if (hd)  hd.textContent  = (t % 2) ? '●' : '○';
       if (hc)  hc.textContent  = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       if (cpu){
         const base = 12, amp = 6;
-        const val = Math.round(base + amp * (0.5 + 0.5*Math.sin(t/2)));
+        const val = Math.round(base + amp * (0.5 + 0.5*Math.sin(t/6)));
         cpu.textContent = `CPU Usage: ${val}%`;
       }
     }, 1000);
@@ -1358,6 +1351,26 @@ init();
   })();
 })();
 // End setupMediaDockChrome
+
+// Debounced window resize for applyThemeFromLeader and panel height
+function debounce(fn, delay) {
+  let timer = null;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+(function exactRowHeight(){
+  const head = document.getElementById('appHeader');
+  const panel = document.getElementById('panelMap');
+  if (!head || !panel) return;
+  function apply(){
+    const h = head.getBoundingClientRect().height + 16;
+    panel.style.height = `calc(100vh - ${Math.round(h)}px)`;
+  }
+  window.addEventListener('resize', debounce(apply, 100));
+  apply();
+})();
 
 
 
