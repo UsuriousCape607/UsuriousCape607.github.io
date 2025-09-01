@@ -4,6 +4,12 @@
     "key": "korea",
     "label": "Unified Korea (Alt 1948)",
     "geojson": "maps/korea_boundaries.geojson",
+    "party_meta": {
+      "KimGu": { "name": "Kim Ku", "long": "Kim Ku - Korea Independence Party", "doc": "docs/candidates/KimGu.md" },
+      "Cho":   { "name": "Cho Man-sik", "long": "Cho Man-sik - Korean Social Democratic Party", "doc": "docs/candidates/Cho.md" },
+      "WPK":   { "name": "Park Heonyeong", "long": "Park Heonyeong - Workers Party of Korea", "doc": "docs/candidates/WPK.md" },
+      "Rhee":  { "name": "Rhee Syngman", "long": "Rhee Syngman - National Alliance for the Rapid Realization of Korean Independence", "doc": "docs/candidates/Rhee.md" }
+    },
     "elections": [{
       "slug": "1948",
       "label": "General Election 1948",

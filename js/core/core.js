@@ -1,21 +1,34 @@
+// js/core/core.js
+// Core utilities: fetch helpers, CSV parsing, color + stats, calling rules, and simulation helpers.
+
+// --- Fetch helpers ---
 async function j(u){ return await (await fetch(u)).json(); }
 async function t(u){ return await (await fetch(u)).text(); }
-function parseCSV(txt){ const rows=txt.trim().split(/\r?\n/).map(r=>r.split(',')); const h=rows.shift(); return rows.map(r=>Object.fromEntries(r.map((v,i)=>[h[i],v]))); }
-function detectParties(row){ const s=new Set(); for (const k of Object.keys(row)){ const m=k.match(/^(.*)_(votes|share)$/i); if (m) s.add(m[1].trim()); } return [...s].sort(); }
-function buildPartyStats(rows, parties){
-  for (const r of rows){
-    const stats={}; let total=0;
-    for (const p of parties){ const v=Number(r[`${p}_votes`]); if (Number.isFinite(v)) total+=v; }
-    for (const p of parties){
-      const v=Number(r[`${p}_votes`]);
-      let s=Number(r[`${p}_share`]);
-      if (!Number.isFinite(s)) s = Number.isFinite(v)&&total>0 ? (v/total)*100 : null;
-      stats[p]={votes:Number.isFinite(v)?v:null, share:Number.isFinite(s)?s:null};
-    }
-    r._party=stats; r._totalVotes=total;
-  }
+
+// --- CSV parsing ---
+function parseCSV(txt){
+  const rows = String(txt || '').trim().split(/\r?\n/);
+  if (!rows.length) return [];
+  const header = rows.shift().split(',');
+  return rows.map(line => {
+    const cells = line.split(',');
+    const obj = {};
+    for (let i=0;i<header.length;i++) obj[header[i]] = cells[i];
+    return obj;
+  });
 }
-// Convert hex color to HSL (0..360, 0..100, 0..100)
+
+// --- Party detection from columns ---
+function detectParties(row){
+  const s=new Set();
+  for (const k of Object.keys(row || {})){
+    const m = k.match(/^(.*)_(votes|share)$/i);
+    if (m) s.add(m[1].trim());
+  }
+  return [...s].sort();
+}
+
+// --- Colors and hues ---
 function hexToHsl(hex){
   const m = String(hex).replace('#','');
   const r = parseInt(m.substring(0,2),16)/255;
@@ -37,13 +50,20 @@ function hexToHsl(hex){
   return { h, s:s*100, l:l*100 };
 }
 
-// Determine a stable hue for each party, with optional overrides.
+// Determine a stable hue for each party, with optional overrides from STATE.partyMeta[color].
 function partyHue(name){
-  // Explicit overrides: Park Heonyeong / WPK → red
   const key = String(name).trim().toLowerCase();
   if (key === 'wpk' || key === 'park heonyeong') {
     return hexToHsl('#d62728').h; // red
   }
+  // Prefer explicit color override from STATE.partyMeta if provided
+  try {
+    const meta = (window.STATE && window.STATE.partyMeta && window.STATE.partyMeta[name]) || null;
+    if (meta && meta.color){ return hexToHsl(meta.color).h; }
+  } catch(_){}
+  // Minimal explicit default override example (can be removed when meta used):
+  const overrides = { };
+  if (overrides[name]) return hexToHsl(overrides[name]).h;
   // Fallback deterministic hue from name hash
   let h=5381; for (let i=0;i<name.length;i++) h=((h<<5)+h)+name.charCodeAt(i);
   const hue=(Math.abs(h)%360+137.508)%360;
@@ -55,14 +75,13 @@ function partyColor(name){
   if (key === 'wpk' || key === 'park heonyeong') {
     return '#d62728'; // solid red
   }
-  const hue = partyHue(name); return `hsl(${hue.toFixed(0)},65%,55%)`;
+  const hue = partyHue(name); return `hsl(${hue.toFixed(0)},65%,55%)`; 
 }
-function winnerForRow(row, parties){ let best=null,bv=-Infinity; for (const p of parties){ const s=row._party?.[p]?.share ?? -Infinity; if (s>bv){bv=s;best=p;} } return best?{party:best,share:bv}:null; }
+function partySoftColor(name){ const hue = partyHue(name); return `hsl(${hue.toFixed(0)},45%,80%)`; }
+
+// --- Percent bin palettes ---
 function percentIdx(v,steps=6){ if(v==null) return -1; const t=Math.max(0,Math.min(1,v/100)); return Math.floor(t*steps); }
 function percentColor(i){ const c=['#deebf7','#c6dbef','#9ecae1','#6baed6','#3182bd','#08519c']; return i<0?'#bbb':c[Math.max(0,Math.min(c.length-1,i))]; }
-
-// Create a party-tinted choropleth color for a given bin index.
-// Uses the deterministic party hue and varies lightness from light to dark.
 function percentColorByParty(partyName, i, steps=6){
   if (i < 0) return '#bbb';
   const hue = partyHue(partyName);
@@ -73,10 +92,8 @@ function percentColorByParty(partyName, i, steps=6){
   return `hsl(${hue.toFixed(0)},${S}%,${L.toFixed(0)}%)`;
 }
 
-// Softer tint for not-yet-called winners
-function partySoftColor(name){ const hue = partyHue(name); return `hsl(${hue.toFixed(0)},45%,80%)`; }
-
-// Compute leader and runner-up for a row
+// --- Row stats helpers ---
+function winnerForRow(row, parties){ let best=null,bv=-Infinity; for (const p of parties){ const s=row?._party?.[p]?.share ?? -Infinity; if (s>bv){bv=s;best=p;} } return best?{party:best,share:bv}:null; }
 function topTwo(row, parties){
   let leader = { key:null, share:-Infinity };
   let runnerUp = { key:null, share:-Infinity };
@@ -89,19 +106,34 @@ function topTwo(row, parties){
   return { leader, runnerUp };
 }
 
+function mixPartyColors(p1, p2){
+  const h1 = partyHue(p1), h2 = partyHue(p2);
+  let dh = ((h2 - h1 + 540) % 360) - 180; // shortest arc
+  const h = (h1 + dh/2 + 360) % 360;
+  const s = 55, l = 70;
+  return `hsl(${h.toFixed(0)},${s}%,${l}%)`;
+}
 
+// --- Race calling rules ---
+// Default thresholds if none provided by data: array of {phase, lead} conditions.
+const DEFAULT_CALL_RULES = [
+  { phase: 0.99, lead: 0.5 },
+  { phase: 0.92, lead: 12 },
+  { phase: 0.85, lead: 18 },
+  { phase: 0.75, lead: 25 }
+];
 
-// Basic “race call” heuristic similar to networks
-// Called when: phase >= 98%, or big lead late, or blowout lead
-function raceCallStatus(row, parties){
+function raceCallStatus(row, parties, rules){
   const phase = typeof row._phase === 'number' ? row._phase : ((row?._totalVotes||0) > 0 ? 1 : 0);
   const t2 = topTwo(row, parties);
   const lead = (Number.isFinite(t2.leader.share) && Number.isFinite(t2.runnerUp.share)) ? (t2.leader.share - t2.runnerUp.share) : 0;
-  // Much more conservative calling thresholds
-  const called = (phase >= 0.99 && lead >= 0.5) ||
-                 (phase >= 0.92 && lead >= 12) ||
-                 (phase >= 0.85 && lead >= 18) ||
-                 (phase >= 0.75 && lead >= 25);
+  // At full reporting, definitively call for leader if any lead exists
+  if (phase >= 0.999) {
+    const called = Number.isFinite(lead) && lead > 0;
+    return { called, lead, phase, label: called ? 'called' : 'tossup', leader: t2.leader, runnerUp: t2.runnerUp };
+  }
+  const rr = Array.isArray(rules) && rules.length ? rules : DEFAULT_CALL_RULES;
+  const called = rr.some(r => phase >= (r.phase||0) && lead >= (r.lead||0));
   let label = 'tossup';
   if (called) label = 'called';
   else if (lead >= 4) label = 'lean';
@@ -109,28 +141,22 @@ function raceCallStatus(row, parties){
 }
 
 // ===== Early/Late Reporting Simulation Helpers =====
-// Deterministic pseudo-random for stable biases per (district, party)
 function _hash32(str){ let h=2166136261>>>0; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
 function _rand01(key){ const h=_hash32(key); return (h/4294967296); }
-
-// Produce a zero-mean bias vector for parties in a district
-// amp is the maximum magnitude (e.g., 0.20 = ±20% influence at f=0)
+// Produce a zero-mean bias vector for parties in a district; amp in [0..1]
 function biasVectorFor(districtKey, parties, amp=0.2){
   const raw = parties.map(p => _rand01(String(districtKey)+'|'+p) - 0.5);
   const mean = raw.reduce((a,b)=>a+b,0) / (raw.length || 1);
   const vec = raw.map(v => v - mean);
   const maxAbs = Math.max(1e-9, Math.max(...vec.map(v=>Math.abs(v))));
-  // Normalize to [-1,1] then scale by amp
   return Object.fromEntries(parties.map((p,i)=>[p, (vec[i]/maxAbs)*amp]));
 }
-
 // Bias fade with reporting phase (1.0 -> no bias)
 function earlyWeight(bias, phase, alpha=1.2){
-  const influence = Math.pow(1 - Math.max(0, Math.min(1, phase)), alpha); // high early, fades late
+  const influence = Math.pow(1 - Math.max(0, Math.min(1, phase)), alpha);
   const w = 1 + bias * influence;
-  return Math.max(0.2, w); // keep positive weight
+  return Math.max(0.2, w);
 }
-
 // Apportion 'total' integer ballots proportionally to weights array
 function apportion(total, weights){
   const sum = weights.reduce((a,b)=>a+b,0);
@@ -142,53 +168,3 @@ function apportion(total, weights){
   for (let k=0; k<fracs.length && left>0; k++, left--){ floors[fracs[k].i]++; }
   return floors;
 }
-
-// If 100% reporting, always use the color of the leading party
-if (mode === 'winner') {
-  LAYER.setStyle(f => {
-    const row = f.properties._row || {};
-    const w = winnerForRow(row, parties);
-    const isDone = row.report_end && Date.now() >= row.report_end;
-    if (isDone && w) {
-      // At 100% reporting, always use solid color of leading party, no striping
-      return {
-        color: '#666',
-        weight: 0.6,
-        fillColor: partyColor(w.party),
-        fillOpacity: 1,
-        fillPattern: undefined // ensure striping is disabled
-      };
-    }
-    // If tossup, apply striping, else solid color
-    if (w && row._party) {
-      const t2 = topTwo(row, parties);
-      const lead = t2.leader.key;
-      const runner = t2.runnerUp.key;
-      const diff = t2.leader.share - t2.runnerUp.share;
-      if (diff < 2) {
-        // Too close: striped between leader and runner-up
-        return {
-          color: '#666',
-          weight: 0.6,
-          fillColor: partySoftColor(lead),
-          fillOpacity: 1,
-          fillPattern: L.pattern({
-            width: 8, height: 8,
-            pattern: [
-              { x:0, y:0, width:8, height:4, fill:partySoftColor(lead) },
-              { x:0, y:4, width:8, height:4, fill:partySoftColor(runner) }
-            ]
-          })
-        };
-      }
-    }
-    return {
-      color: '#666',
-      weight: 0.6,
-      fillColor: w ? partyColor(w.party) : '#bbb',
-      fillOpacity: 1,
-      fillPattern: undefined // ensure no striping by default
-    };
-  });
-}
-
